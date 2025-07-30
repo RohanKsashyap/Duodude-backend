@@ -13,7 +13,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:5173', // Allow only your front-end origin
+  origin: 'https://duodude.in', // Allow only your front-end origin
   credentials: true, // Allow credentials (cookies, authorization headers, etc.)
 }));
 
