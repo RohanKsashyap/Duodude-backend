@@ -3,10 +3,23 @@ import Product from '../models/Product.js';
 
 export const getCart = async (req, res) => {
   try {
+    console.log("Cart controller - Getting cart for user:", req.user?._id);
+    
+    if (!req.user || !req.user._id) {
+      console.error("Cart controller - No user found in request");
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+    
     const cart = await Cart.findOne({ user: req.user._id }).populate('items.product');
+    console.log("Cart controller - Cart found:", cart ? "Yes" : "No");
+    
     res.json(cart || { user: req.user._id, items: [] });
   } catch (err) {
-    res.status(500).json({ message: 'Server error fetching cart' });
+    console.error("Cart controller - Error fetching cart:", err);
+    res.status(500).json({
+      message: 'Server error fetching cart',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };
 

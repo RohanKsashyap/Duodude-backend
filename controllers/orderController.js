@@ -1,11 +1,13 @@
 import Order from "../models/Order.js";
+import Product from "../models/Product.js";
+import User from "../models/User.js";
 
 // Admin: get all orders, populate user and product details
 export const getOrders = async (req, res) => {
   try {
     const orders = await Order.find()
       .populate("user", "name email")            // user info
-      .populate("items.product", "name price");  // product info
+      .populate("items.product", "name price image images");  // product info with images
     res.json(orders);
   } catch (error) {
     console.error("Error fetching orders:", error);
@@ -17,7 +19,7 @@ export const getOrders = async (req, res) => {
 export const getUserOrders = async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user._id })
-      .populate("items.product", "name price");
+      .populate("items.product", "name price image images");
     res.json(orders);
   } catch (error) {
     console.error("Error fetching user orders:", error);
@@ -30,7 +32,7 @@ export const getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
       .populate("user", "name email")
-      .populate("items.product", "name price");
+      .populate("items.product", "name price image images");
     if (!order) return res.status(404).json({ message: "Order not found" });
 
     // Check ownership or admin role
@@ -52,6 +54,19 @@ export const createOrder = async (req, res) => {
 
     if (!items || items.length === 0) {
       return res.status(400).json({ message: "No order items" });
+    }
+
+    // Check and update stock for each product
+    for (const item of items) {
+      const product = await Product.findById(item.product);
+      if (!product) {
+        return res.status(404).json({ message: `Product not found: ${item.product}` });
+      }
+      if (typeof item.quantity !== 'number' || product.stock < item.quantity) {
+        return res.status(400).json({ message: `Insufficient stock for product: ${product.name}` });
+      }
+      product.stock -= item.quantity;
+      await product.save();
     }
 
     const order = new Order({
@@ -98,5 +113,71 @@ export const deleteOrder = async (req, res) => {
   } catch (error) {
     console.error("Error deleting order:", error);
     res.status(500).json({ message: "Failed to delete order" });
+  }
+};
+
+// Cancel order (user can cancel if not delivered)
+export const cancelOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id).populate('items.product');
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Check ownership or admin role
+    if (order.user.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    // Check if order can be cancelled
+    if (order.status === "delivered") {
+      return res.status(400).json({ message: "Cannot cancel delivered orders" });
+    }
+
+    if (order.status === "cancelled") {
+      return res.status(400).json({ message: "Order is already cancelled" });
+    }
+
+    // Restore stock for cancelled items
+    for (const item of order.items) {
+      const product = await Product.findById(item.product._id);
+      if (product) {
+        product.stock += item.quantity;
+        await product.save();
+      }
+    }
+
+    order.status = "cancelled";
+    await order.save();
+
+    res.json({ message: "Order cancelled successfully", order });
+  } catch (error) {
+    console.error("Error cancelling order:", error);
+    res.status(500).json({ message: "Failed to cancel order" });
+  }
+};
+
+export const getAnalytics = async (req, res) => {
+  try {
+    const totalOrders = await Order.countDocuments();
+    const totalSalesAgg = await Order.aggregate([
+      { $group: { _id: null, total: { $sum: "$total" } } }
+    ]);
+    const totalSales = totalSalesAgg[0]?.total || 0;
+    const totalUsers = await User.countDocuments();
+    // Sales by month (last 12 months)
+    const salesByMonth = await Order.aggregate([
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m", date: "$createdAt" } },
+          total: { $sum: "$total" },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+    res.json({ totalOrders, totalSales, totalUsers, salesByMonth });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch analytics" });
   }
 };

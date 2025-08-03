@@ -5,6 +5,7 @@ import {
   getProductById,
   updateProduct,
   deleteProduct,
+  getFeaturedProducts,
 } from "../controllers/productController.js";
 import { protect, admin } from "../middleware/authMiddleware.js";
 
@@ -12,6 +13,9 @@ const router = express.Router();
 
 // Get all products
 router.get("/", getProducts);
+
+// Get featured products
+router.get("/featured", getFeaturedProducts);
 
 // Get product by ID
 router.get("/:id", getProductById);

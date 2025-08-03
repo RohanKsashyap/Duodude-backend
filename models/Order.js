@@ -5,10 +5,19 @@ const orderSchema = new mongoose.Schema({
   items: [
     {
       product: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
-      quantity: Number
+      quantity: Number,
+      size: String
     }
   ],
   total: Number,
+  shippingAddress: {
+    name: String,
+    street: String,
+    city: String,
+    zip: String,
+    country: String
+  },
+  paymentMethod: String,
   status: { type: String, default: "Pending" }
 }, { timestamps: true });
 
