@@ -51,19 +51,38 @@ export const getOrderById = async (req, res) => {
 export const createOrder = async (req, res) => {
   try {
     const { items, total, shippingAddress, paymentMethod } = req.body;
+    
+    console.log('Order creation request:', { items, total, shippingAddress, paymentMethod, userId: req.user._id });
 
+    // Validate required fields
     if (!items || items.length === 0) {
       return res.status(400).json({ message: "No order items" });
+    }
+    
+    if (!shippingAddress) {
+      return res.status(400).json({ message: "Shipping address is required" });
+    }
+    
+    if (!shippingAddress.name || !shippingAddress.street || !shippingAddress.city || !shippingAddress.zip || !shippingAddress.country) {
+      return res.status(400).json({ message: "All shipping address fields are required" });
+    }
+    
+    if (!total || typeof total !== 'number') {
+      return res.status(400).json({ message: "Valid total amount is required" });
     }
 
     // Check and update stock for each product
     for (const item of items) {
+      if (!item.product || !item.quantity || typeof item.quantity !== 'number') {
+        return res.status(400).json({ message: "Invalid item data" });
+      }
+      
       const product = await Product.findById(item.product);
       if (!product) {
         return res.status(404).json({ message: `Product not found: ${item.product}` });
       }
-      if (typeof item.quantity !== 'number' || product.stock < item.quantity) {
-        return res.status(400).json({ message: `Insufficient stock for product: ${product.name}` });
+      if (product.stock < item.quantity) {
+        return res.status(400).json({ message: `Insufficient stock for product: ${product.name}. Available: ${product.stock}, Requested: ${item.quantity}` });
       }
       product.stock -= item.quantity;
       await product.save();
@@ -74,16 +93,24 @@ export const createOrder = async (req, res) => {
       items,
       total,
       shippingAddress,
-      paymentMethod,
-      status: "Pending",  // default status
-      createdAt: Date.now()
+      paymentMethod: paymentMethod || 'cod',
+      status: "Pending"
     });
 
-    await order.save();
-    res.status(201).json(order);
+    const savedOrder = await order.save();
+    console.log('Order created successfully:', savedOrder._id);
+    
+    res.status(201).json(savedOrder);
   } catch (error) {
-    console.error("Error creating order:", error);
-    res.status(500).json({ message: "Failed to create order" });
+    console.error("Detailed error creating order:", error);
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({ message: `Validation error: ${validationErrors.join(', ')}` });
+    }
+    
+    res.status(500).json({ message: "Failed to create order", error: error.message });
   }
 };
 
