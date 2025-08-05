@@ -37,10 +37,12 @@ import userRoutes from "./routes/userRoutes.js";
 import cartRoutes from './routes/cartRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
 import returnRoutes from './routes/returnRoutes.js';
+import heroSlideRoutes from './routes/heroSlideRoutes.js';
 
 app.use('/api/cart', cartRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/returns', returnRoutes);
+app.use('/api/hero-slides', heroSlideRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
