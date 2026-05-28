@@ -13,17 +13,13 @@ const app = express();
 
 // Middleware
 app.use(cors({
-
-  origin: 'https://duodude.in', // Allow only your front-end origin
-
   origin: [
-    'http://localhost:5173', // Local development
-    'https://duodude.vercel.app', // Vercel deployment
-    /^https:\/\/duodude.*\.vercel\.app$/, // Any Vercel preview deployments
-    'https://duodude.in' // Custom domain if you have one
+    'http://localhost:5173',
+    'https://duodude.vercel.app',
+    'https://duodude.in',
+    'https://www.duodude.in'
   ],
-
-  credentials: true, // Allow credentials (cookies, authorization headers, etc.)
+  credentials: true
 }));
 
 app.use(express.json());
