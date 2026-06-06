@@ -1,7 +1,7 @@
 import ImageKit from '@imagekit/nodejs';
+import { toFile } from '@imagekit/nodejs/uploads';
 
 // Lazily create the client so dotenv has time to load before this runs.
-// The client is only instantiated on the first actual upload/delete call.
 let _imagekit = null;
 const getImageKit = () => {
   if (!_imagekit) {
@@ -28,8 +28,13 @@ export const uploadImage = async (req, res) => {
     const folder = req.body.folder || '/duodude';
     const imagekit = getImageKit();
 
-    const result = await imagekit.upload({
-      file: req.file.buffer,           // Buffer from multer memoryStorage
+    // Wrap the multer buffer in a File object that the SDK accepts
+    const uploadable = await toFile(req.file.buffer, req.file.originalname, {
+      type: req.file.mimetype,
+    });
+
+    const result = await imagekit.files.upload({
+      file: uploadable,
       fileName: req.file.originalname,
       folder,
       useUniqueFileName: true,
@@ -58,7 +63,7 @@ export const deleteImage = async (req, res) => {
     }
 
     const imagekit = getImageKit();
-    await imagekit.deleteFile(fileId);
+    await imagekit.files.delete(fileId);
     res.status(200).json({ message: 'Image deleted successfully.' });
   } catch (error) {
     console.error('ImageKit delete error:', error);
