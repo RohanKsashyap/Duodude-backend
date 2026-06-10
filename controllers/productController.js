@@ -1,33 +1,119 @@
 import Product from "../models/Product.js";
+import Category from "../models/Category.js";
+
+// Helper: resolve a slug or name to all matching category IDs (including subcategories)
+async function resolveCategoryIds(slugOrName) {
+  if (!slugOrName || slugOrName === 'all') return null;
+
+  // Try to find by slug first, then by name (case-insensitive)
+  const cat = await Category.findOne({
+    $or: [
+      { slug: slugOrName.toLowerCase() },
+      { name: new RegExp(`^${slugOrName}$`, 'i') },
+    ],
+  });
+
+  if (!cat) return null;
+
+  // If it's a parent category, also include all its children
+  const children = await Category.find({ parent: cat._id });
+  return [cat._id.toString(), ...children.map((c) => c._id.toString())];
+}
 
 // Get all products
 export const getProducts = async (req, res) => {
   try {
-    const { search, category, minPrice, maxPrice, sortBy, sortOrder } = req.query;
+    const { search, category, categories, minPrice, maxPrice, sortBy, sortOrder, sizes, colors } = req.query;
     const filter = {};
+
+    // Full-text search on name and description
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
+        { description: { $regex: search, $options: 'i' } },
       ];
     }
-    if (category && category !== 'all') {
-      filter.category = category;
+
+    // Category filter — resolve slug → category IDs, then match against category or subcategory field
+    const categoryValues = [];
+
+    if (categories && categories !== 'all') {
+      const slugList = Array.isArray(categories)
+        ? categories
+        : String(categories).split(',').map((c) => c.trim()).filter(Boolean);
+      for (const slug of slugList) {
+        const ids = await resolveCategoryIds(slug);
+        if (ids) categoryValues.push(...ids);
+      }
+    } else if (category && category !== 'all') {
+      const ids = await resolveCategoryIds(category);
+      if (ids) categoryValues.push(...ids);
     }
+
+    if (categoryValues.length > 0) {
+      // Match products where category OR subcategory equals any of the resolved IDs
+      // Use $and to avoid overwriting any existing $or (e.g. search)
+      const categoryCondition = {
+        $or: [
+          { category: { $in: categoryValues } },
+          { subcategory: { $in: categoryValues } },
+        ],
+      };
+      if (filter.$and) {
+        filter.$and.push(categoryCondition);
+      } else if (filter.$or) {
+        // Search already used $or — wrap both in $and
+        filter.$and = [{ $or: filter.$or }, categoryCondition];
+        delete filter.$or;
+      } else {
+        filter.$and = [categoryCondition];
+      }
+    }
+
+    // Price range
     if (minPrice || maxPrice) {
       filter.price = {};
       if (minPrice) filter.price.$gte = Number(minPrice);
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
-    let sort = {};
-    if (sortBy) {
-      const order = sortOrder === 'desc' ? -1 : 1;
-      if (['price', 'rating', 'createdAt'].includes(sortBy)) {
-        sort[sortBy] = order;
+
+    // Size filter — stored as comma-separated string e.g. "S,M,L"
+    if (sizes) {
+      const sizeList = Array.isArray(sizes)
+        ? sizes
+        : String(sizes).split(',').map((s) => s.trim()).filter(Boolean);
+      if (sizeList.length > 0) {
+        const sizeConditions = sizeList.map((s) => ({ sizes: { $regex: s, $options: 'i' } }));
+        if (filter.$and) {
+          filter.$and.push({ $or: sizeConditions });
+        } else {
+          filter.$and = [{ $or: sizeConditions }];
+        }
       }
-    } else {
-      sort = { createdAt: -1 };
     }
+
+    // Color filter — stored as comma-separated string e.g. "black,white"
+    if (colors) {
+      const colorList = Array.isArray(colors)
+        ? colors
+        : String(colors).split(',').map((c) => c.trim()).filter(Boolean);
+      if (colorList.length > 0) {
+        const colorConditions = colorList.map((c) => ({ colors: { $regex: c, $options: 'i' } }));
+        if (filter.$and) {
+          filter.$and.push({ $or: colorConditions });
+        } else {
+          filter.$and = [{ $or: colorConditions }];
+        }
+      }
+    }
+
+    // Sort
+    let sort = { createdAt: -1 };
+    if (sortBy && ['price', 'rating', 'createdAt'].includes(sortBy)) {
+      const order = sortOrder === 'asc' ? 1 : -1;
+      sort = { [sortBy]: order };
+    }
+
     const products = await Product.find(filter).sort(sort);
     res.json(products);
   } catch (error) {
