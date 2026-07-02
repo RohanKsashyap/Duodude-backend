@@ -71,6 +71,37 @@ export const removeFromCart = async (req, res) => {
   }
 };
 
+export const updateCartQuantity = async (req, res) => {
+  const { productId } = req.params;
+  const { quantity, size } = req.body;
+
+  if (!quantity || quantity < 1) {
+    return res.status(400).json({ message: 'Quantity must be at least 1' });
+  }
+
+  try {
+    const cart = await Cart.findOne({ user: req.user._id });
+    if (!cart) return res.status(404).json({ message: 'Cart not found' });
+
+    // Match by productId and optionally size (size may be undefined for items added without size)
+    const item = cart.items.find((i) => {
+      const sameProduct = i.product.toString() === productId;
+      // If size is provided in the request, match it; otherwise match any size
+      return size !== undefined ? sameProduct && i.size === size : sameProduct;
+    });
+
+    if (!item) return res.status(404).json({ message: 'Item not found in cart' });
+
+    item.quantity = quantity;
+    await cart.save();
+
+    const populated = await cart.populate('items.product');
+    res.json(populated);
+  } catch (err) {
+    res.status(500).json({ message: 'Error updating cart quantity' });
+  }
+};
+
 export const clearCart = async (req, res) => {
   try {
     await Cart.findOneAndUpdate({ user: req.user._id }, { items: [] });
